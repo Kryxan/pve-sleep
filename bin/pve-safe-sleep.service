@@ -1,0 +1,16 @@
+[Unit]
+Description=PVE-Sleep Safe Sleep Preparation
+Documentation=https://github.com/kryxan/pve-sleep
+Before=sleep.target
+StopWhenUnneeded=yes
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/safe-sleep.sh prepare
+ExecStop=/usr/local/bin/safe-sleep.sh restore
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=sleep.target

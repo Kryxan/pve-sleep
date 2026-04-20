@@ -55,14 +55,15 @@ battery_is_charging() {
 
 request_sleep_pathway() {
   touch "$REQUEST_FLAG"
-  log "Low battery detected. Preparing guests and requesting future sleep hook."
+  log "Low battery detected (${cap}%). Initiating safe sleep..."
   if [[ -x "$SAFE_SLEEP_SCRIPT" ]]; then
-    "$SAFE_SLEEP_SCRIPT" prepare || true
+    "$SAFE_SLEEP_SCRIPT" sleep || {
+      log "safe-sleep refused to sleep (no wake capability or no compatible sleep mode). Falling back to guest prep only."
+      "$SAFE_SLEEP_SCRIPT" prepare || true
+    }
   fi
   if [[ -x "$HOOK_SCRIPT" ]]; then
     "$HOOK_SCRIPT" || true
-  else
-    log "No sleep hook is configured. Host sleep itself is intentionally not invoked."
   fi
 }
 

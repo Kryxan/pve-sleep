@@ -1,128 +1,146 @@
 # pve-sleep
 
-Bash-based sleep and wake inspection and setup toolkit for Proxmox 8 on Debian 12 and Proxmox 9 on Debian 13.
+Modular sleep, wake, and power management toolkit for Proxmox 8 (Debian 12) and Proxmox 9 (Debian 13).
+
+This is based on work previously written by me but never completed. It became too large and broken to easily manage and fix. The end goal is proxmox node power management so heavy work (such as AI LLM and image generation) can trigger other hosts to wake up to assist as needed.I am also looking into steam game mode and android game containtainers that can trigger host wakeup when needed.  
+
+Eventaully, plan is for full configuration for intelligent wake and sleep functions to be added so a yet to be fully envisioned control system can be aware of other proxmox nodes and the need to trigger wakeup.  
 
 ## What it does
 
-The toolkit detects and reports:
+### Detection
 
-- CPU governors and powersave or performance modes
-- GPU power controls
-- lid switch, built-in display, external display, and battery presence
-- physical ethernet and Wi-Fi adapters
-- Wake-on-LAN, Wake-on-Wireless-LAN, USB wake, RTC wake, and supported sleep states
-- systemd, logind, timer, and GRUB settings that affect sleep or wake behavior
-- package requirements for battery support, wake support, Wi-Fi fallback, firmware, and CPU microcode
+- CPU model, governor, available governors, microcode version
+- GPU vendor, driver, DPM power mode
+- Lid switch, built-in display, external displays, battery presence and capacity
+- Physical Ethernet and Wi-Fi adapters (excludes Proxmox bridges, veth, tap, etc.)
+- Wake-on-LAN support and current mode per Ethernet adapter
+- Wake-on-Wireless-LAN support per WiFi adapter
+- USB devices and wake capability
+- Supported sleep states (S3, s2idle, etc.), mem_sleep config, RTC wake
+- systemd logind HandleLidSwitch* settings
+- Active systemd timers that may interfere with sleep
+- GRUB and kernel sleep-related parameters
+- Package recommendations (CPU microcode, WiFi firmware, ethtool, iw, wpasupplicant)
 
-It can also:
+### Configuration
 
-- safely install missing packages in a single prompt after checking the Proxmox apt transaction
-- enable Wake-on-LAN and Wake-on-Wireless-LAN where supported
-- scan the top 5 visible Wi-Fi networks by signal strength and configure wpa-supplicant
-- configure Wi-Fi as fallback when ethernet is lost and prefer ethernet again when it returns
-- blank the local console and internal panel on lid-close events without putting the host to sleep
-- monitor battery state and prepare a future sleep pathway without invoking host sleep automatically
-- prepare running VMs and containers for a later sleep workflow with the safe-sleep helper
+- Install missing packages with apt safety checks (blocks Proxmox-breaking operations)
+- Enable WoL on Ethernet, WoWLAN on WiFi adapters
+- Enable USB wake on all devices
+- Set CPU governor (powersave) and GPU DPM (auto)
+- Configure WiFi as metric-200 failover with wpa_supplicant
+- Write /etc/network/interfaces.d/wifi-failover and source line
+- Blank console on lid close (no sleep)
+- Configure sleep modes (only S3/s2idle, only on low battery)
+- Boot persistence via /etc/pve-sleep/boot.conf + systemd service
 
-## Important network note
+### Safe Sleep
 
-Wi-Fi can be used as a management failover path, but it cannot be bridged directly into a Proxmox Linux bridge unless you use a VPN or a routed design.
+- Suspend or snapshot+stop running VMs and containers before host sleep
+- Restore guests after wake
+- Verify WoL/WoWLAN is active before allowing sleep
+- Verify compatible sleep mode (S3 or s2idle) before sleeping
+- Integrated with sleep.target via pve-safe-sleep.service
+- Battery monitor triggers safe-sleep on low battery (no AC, not charging)
 
-## Installed layout
+## Architecture
 
-Running the installer places the project in:
+```text
+bin/
+  lib/
+    common.sh      # Shared utilities, logging, json helpers
+    detect.sh      # All hardware/system detection functions
+    network.sh     # Interface helpers, WiFi, WoL, WoWLAN, interface files
+    packages.sh    # Apt management, package recommendations, safety checks
+    configure.sh   # Configuration actions (packages, wake, wifi, governors, sleep)
+    report.sh      # TXT and JSON report rendering
+  pve-sleep-detect.sh       # Main orchestrator (10-phase flow)
+  safe-sleep.sh             # Guest preparation, restore, and host sleep trigger
+  sleep-boot.sh             # Boot-time persistence (governors, WoL, USB wake)
+  battery-monitor.sh        # Battery watch, triggers safe-sleep on low battery
+  network-failover-monitor.sh  # WiFi failover monitor
+  lid-handler.sh            # Lid close/open handler (blank only)
+  console-blank.sh          # Console blanking service script
+  aptfunctions.sh           # Backward-compat shim -> lib/packages.sh
+  networkwake.sh            # Backward-compat shim -> lib/network.sh
+  pve-sleep-boot.service    # Systemd: apply boot config
+  pve-safe-sleep.service    # Systemd: sleep.target integration
+  pve-battery-monitor.service
+  pve-network-failover.service
+  pve-lid-handler.service
+  console-blank.service
+  99-lid.rules              # Udev rule for lid events
+pvesleep-install.sh         # Installer / uninstaller
+```
 
-- /opt/pve-sleep
-- /opt/pve-sleep/bin
+## Network design
 
-The installer also replaces symlinks for the included udev and systemd files:
+WiFi is configured as a management failover path with metric-based routing:
 
-- /etc/udev/rules.d/99-pve-sleep-lid.rules
-- /etc/systemd/system/console-blank.service
-- /etc/systemd/system/pve-lid-handler.service
-- /etc/systemd/system/pve-battery-monitor.service
-- /etc/systemd/system/pve-network-failover.service
-
-## Output
-
-Each detection run writes:
-
-- sleep-system.txt
-- sleep-system.json
-
-When package installation is requested, the toolkit also keeps:
-
-- sleep-system-before.txt
-- sleep-system-before.json
-- sleep-system-after.txt
-- sleep-system-after.json
+- **Ethernet**: metric 100 (primary, preferred when cable is connected)
+- **WiFi**: metric 200 (failover, always connected via wpa_supplicant)
+- Both interfaces get DHCP leases; Linux routing uses the lower metric
+- WiFi **cannot** be bridged directly into a Proxmox Linux bridge (requires VPN/routed design)
+- The toolkit writes `/etc/network/interfaces.d/wifi-failover` and adds a `source` line
+- Existing bridge configs (vmbr*) are never modified
 
 ## Install
 
 ### One-line GitHub install
 
 ```sh
-curl -L https://github.com/Kryxan/pve-sleep/archive/refs/heads/main.tar.gz | tar xz -C /tmp/ && bash /tmp/pve-sleep-main/pvesleep-install.sh
+curl -L https://github.com/Kryxan/pve-sleep/archive/refs/heads/main.tar.gz \
+  | tar xz -C /tmp/ && bash /tmp/pve-sleep-main/pvesleep-install.sh
 ```
 
-### Local install from a checkout
-
-Run as root:
+### Local install from checkout
 
 ```sh
 ./pvesleep-install.sh
 ```
 
-This installs the toolkit into /opt/pve-sleep, stores the installer at /opt/pve-sleep/pvesleep-install.sh for later reuse, reloads the linked service and rule files, and automatically runs the detector.
+This installs into `/opt/pve-sleep`, creates symlinks for systemd units and udev rules, adds convenience symlinks in `/usr/local/bin/`, and runs the detector/configurator.
 
 ## Usage
 
-### Detect only
+### Interactive (prompts for all features)
 
 ```sh
 /opt/pve-sleep/pve-sleep-detect.sh
 ```
 
-### Reinstall or change install options later
+### Non-interactive (all features enabled)
 
 ```sh
-# Interactive (prompts for all features)
+/opt/pve-sleep/pve-sleep-detect.sh \
+  --install-missing --enable-wake --configure-wifi "SSID" "PASSWORD"
+```
+
+### Non-interactive (all features disabled)
+
+```sh
+/opt/pve-sleep/pve-sleep-detect.sh \
+  --no-install-missing --no-enable-wake --no-configure-wifi
+```
+
+### Safe sleep (guest-aware suspend)
+
+```sh
+# Prepare guests, verify wake, suspend, restore on wake
+safe-sleep.sh sleep
+
+# Or step by step:
+safe-sleep.sh prepare
+safe-sleep.sh restore
+safe-sleep.sh status
+```
+
+### Reinstall or update
+
+```sh
 /opt/pve-sleep/pvesleep-install.sh
-
-# Non-interactive (all features enabled, no prompts)
-/opt/pve-sleep/pvesleep-install.sh --install-missing --enable-wake --configure-wifi "SSID" "PASSWORD"
-
-# Non-interactive (all features disabled)
-/opt/pve-sleep/pvesleep-install.sh --no-install-missing --no-enable-wake --no-configure-wifi
 ```
-
-### Verify writable wake controls without permanent change
-
-```sh
-/opt/pve-sleep/pve-sleep-detect.sh --probe-write
-```
-
-### Detect, prompt once for all safe package installs, enable wake, and configure Wi-Fi fallback
-
-```sh
-# Interactive (prompts for all features)
-/opt/pve-sleep/pve-sleep-detect.sh
-
-# Non-interactive (all features enabled, no prompts)
-/opt/pve-sleep/pve-sleep-detect.sh --install-missing --enable-wake --configure-wifi "SSID" "PASSWORD"
-
-# Non-interactive (all features disabled)
-/opt/pve-sleep/pve-sleep-detect.sh --no-install-missing --no-enable-wake --no-configure-wifi
-```
-
-**Interactive mode** will:
-
-1. Print the current support report
-2. Show a single list of needed packages and ask once whether to install them, defaulting to yes
-3. Re-run detection after installation and save before and after reports
-4. Show the top 5 Wi-Fi networks by signal strength and let you pick one or skip
-
-**Non-interactive mode** requires all arguments for features you want enabled. For Wi-Fi, you must provide SSID and PASSWORD as arguments to `--configure-wifi`.
 
 ### Uninstall
 
@@ -130,79 +148,55 @@ This installs the toolkit into /opt/pve-sleep, stores the installer at /opt/pve-
 /opt/pve-sleep/pvesleep-install.sh --uninstall
 ```
 
-This disables and removes the linked pve-sleep services and udev rule. For safety, custom hooks and unrelated system network configuration are left in place.
+Custom hooks, `/etc/pve-sleep/`, and WiFi configuration are left untouched.
 
-## Helper scripts
+## Output
 
-### safe-sleep
+Each detection run writes:
 
-The safe-sleep helper does not put the host to sleep. It only prepares guests for future plan to integrate it into a later suspend workflow.
+- `sleep-system.txt` — human-readable report
+- `sleep-system.json` — machine-readable report
 
-```sh
-/opt/pve-sleep/bin/safe-sleep.sh prepare
-/opt/pve-sleep/bin/safe-sleep.sh restore
-/opt/pve-sleep/bin/safe-sleep.sh status
-```
+When package installation is requested, before/after snapshots are saved:
 
-Behavior:
+- `sleep-system-before.{txt,json}`
+- `sleep-system-after.{txt,json}`
 
-- VMs are suspended if possible
-- containers are suspended if possible
-- if suspend is not available, the guest is snapshotted and then shut down or stopped
-- restore brings previously prepared guests back
+## Boot persistence
 
-### sleep.target integration example
+After running the configurator, settings are saved to `/etc/pve-sleep/boot.conf` and reapplied on every boot by `pve-sleep-boot.service`:
 
-If you later decide to wire this into a real host sleep workflow, one safe pattern is to call the helper before sleep and restore after wake.
+- CPU governor
+- GPU DPM power mode
+- WoL on Ethernet adapters
+- WoWLAN on WiFi adapters
+- USB wake on all devices
+- Network adapter power mode set to "on" for wake support
 
-Example pre-sleep service:
+## Apt safety checks
 
-```ini
-[Unit]
-Description=Prepare Proxmox guests for host sleep
-Before=sleep.target
+Package installation is gated by safety checks that **block** any apt transaction that would:
 
-[Service]
-Type=oneshot
-ExecStart=/opt/pve-sleep/bin/safe-sleep.sh prepare
+- Remove Proxmox core packages (proxmox-ve, pve-manager, pve-kernel-*, etc.)
+- Install Debian kernel packages (linux-image-*, linux-headers-*)
+- Install initramfs-tools (Proxmox uses dracut)
+- Remove or replace pve-firmware or dracut
 
-[Install]
-WantedBy=sleep.target
-```
+## Services
 
-A matching post-wake restore step can call:
-
-```sh
-/opt/pve-sleep/bin/safe-sleep.sh restore
-```
-
-## Battery monitor
-
-The battery monitor service only watches for low battery while AC power is absent and the battery is not charging. It does not force host sleep by default.
-
-Instead it:
-
-- logs the condition
-- prepares guests by calling the safe-sleep helper when available
-- creates a future hand-off path through an optional executable hook at:
-
-```sh
-/opt/pve-sleep/hooks/request-sleep.sh
-```
-
-If you later want to trigger an actual suspend action, place your own hook there.
-
-## Console blanking and lid behavior
-
-The included lid rule and handler are intended for screen-off behavior only.
-
-- lid close blanks the backlight and consoles
-- lid open restores the saved backlight values
-- console blanking is managed by the console-blank service
-- no host sleep action is performed here
+| Service | Purpose |
+| --- | --- |
+| `pve-sleep-boot.service` | Apply boot.conf settings on startup |
+| `pve-safe-sleep.service` | Prepare guests before sleep.target, restore after wake |
+| `pve-battery-monitor.service` | Watch battery, trigger safe-sleep on low battery |
+| `pve-network-failover.service` | Monitor WiFi failover status |
+| `pve-lid-handler.service` | Handle lid close/open (blank only, no sleep) |
+| `console-blank.service` | Blank console and backlight |
 
 ## Notes
 
-- Package installation is gated by the apt safety checks in the shared apt helper.
-- The toolkit avoids dumping every interrupt and wake source and instead summarizes only the items relevant to sleep and wake troubleshooting.
-- On a Proxmox node with active guests, host suspend still has operational risk even when guest preparation is available.
+- Sleep is **only** triggered on low battery when on battery power
+- Sleep requires active WoL or WoWLAN and a compatible sleep mode (S3 or s2idle)
+- The toolkit never auto-suspends; suspension is always gated by safety checks
+- WiFi firmware packages are skipped if `pve-firmware` is already installed
+- GPU configuration is runtime DPM tuning only; no driver installation
