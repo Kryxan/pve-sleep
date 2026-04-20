@@ -62,7 +62,7 @@ When package installation is requested, the toolkit also keeps:
 ### One-line GitHub install
 
 ```sh
-curl -L https://github.com/Kryxan/pve-sleep/archive/refs/heads/main.tar.gz | tar xz -C /tmp/ && /tmp/pve-sleep-main/pvesleep-install.sh
+curl -L https://github.com/Kryxan/pve-sleep/archive/refs/heads/main.tar.gz | tar xz -C /tmp/ && bash /tmp/pve-sleep-main/pvesleep-install.sh
 ```
 
 ### Local install from a checkout
