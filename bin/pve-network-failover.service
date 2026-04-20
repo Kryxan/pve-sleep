@@ -1,0 +1,14 @@
+[Unit]
+Description=PVE Sleep network failover monitor
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/opt/pve-sleep/bin/network-failover-monitor.sh
+
+[Service]
+Type=simple
+ExecStart=/opt/pve-sleep/bin/network-failover-monitor.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,7 @@
+[Unit]
+Description=PVE Sleep lid display handler
+ConditionPathExists=/opt/pve-sleep/bin/lid-handler.sh
+
+[Service]
+Type=oneshot
+ExecStart=/opt/pve-sleep/bin/lid-handler.sh

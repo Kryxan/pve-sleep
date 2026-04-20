@@ -1,0 +1,11 @@
+[Unit]
+Description=Apply console blanking settings for local consoles
+After=multi-user.target
+ConditionPathExists=/opt/pve-sleep/bin/console-blank.sh
+
+[Service]
+Type=oneshot
+ExecStart=/opt/pve-sleep/bin/console-blank.sh
+
+[Install]
+WantedBy=multi-user.target

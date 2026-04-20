@@ -1,0 +1,14 @@
+[Unit]
+Description=PVE Sleep battery monitor
+After=multi-user.target
+ConditionPathExists=/opt/pve-sleep/bin/battery-monitor.sh
+ConditionPathExistsGlob=/sys/class/power_supply/BAT*
+
+[Service]
+Type=simple
+ExecStart=/opt/pve-sleep/bin/battery-monitor.sh
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target
