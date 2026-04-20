@@ -11,24 +11,43 @@ log()  { echo "${C_GREEN}[install]${C_RESET} $*"; }
 warn() { echo "${C_YELLOW}[install] WARNING:${C_RESET} $*" >&2; }
 err()  { echo "${C_RED}[install] ERROR:${C_RESET} $*" >&2; }
 
+
 PREFIX="/opt/pve-sleep"
 RUN_DETECT=1
 UNINSTALL=0
+INTERACTIVE=1
+INSTALL_MISSING=0
+ENABLE_WAKE=0
+CONFIGURE_WIFI=0
+NO_INSTALL_MISSING=0
+NO_ENABLE_WAKE=0
+NO_CONFIGURE_WIFI=0
+WIFI_SSID=""
+WIFI_PASS=""
 DETECT_ARGS=()
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_SOURCE_DIR="$ROOT_DIR/bin"
 
 usage() {
   cat <<EOF
-Usage: $0 [--prefix DIR] [--uninstall] [--no-detect] [--help] [detector options]
+Usage: $0 [--prefix DIR] [--uninstall] [--no-detect] [--help]
+            [--install-missing|--no-install-missing]
+            [--enable-wake|--no-enable-wake]
+            [--configure-wifi SSID PASSWORD|--no-configure-wifi]
 
 Examples:
   $0
-  $0 --prefix /opt/pve-sleep
-  $0 --install-missing --enable-wake --configure-wifi
+    # Interactive install (prompts for missing packages, wake, wifi)
+  $0 --install-missing --enable-wake --configure-wifi "SSID" "PASSWORD"
+    # Non-interactive install with all features enabled
+  $0 --no-install-missing --no-enable-wake --no-configure-wifi
+    # Non-interactive install with all features disabled
   $0 --uninstall
 
 Notes:
+  - Running with no flags is interactive and prompts for all features.
+  - Passing any of the --install-missing, --enable-wake, or --configure-wifi flags disables prompts and requires all needed arguments.
+  - --configure-wifi requires SSID and PASSWORD as arguments in non-interactive mode.
   - Re-running the installer is safe and will refresh the installed files.
   - Unknown options are passed through to pve-sleep-detect.sh after install.
 EOF
@@ -98,11 +117,12 @@ install_files() {
     err "Could not find the bin directory next to the installer."
     exit 1
   fi
-
-  cp -f "$BIN_SOURCE_DIR"/* "$bin_dir/"
-  cp -f "$BIN_SOURCE_DIR/pve-sleep-detect.sh" "$PREFIX/pve-sleep-detect.sh"
-  cp -f "$0" "$PREFIX/pvesleep-install.sh"
-  [[ -f "$ROOT_DIR/README.md" ]] && cp -f "$ROOT_DIR/README.md" "$PREFIX/README.md"
+  if [[ "$bin_dir" != "$BIN_SOURCE_DIR" ]]; then
+    cp -f "$BIN_SOURCE_DIR"/* "$bin_dir/"
+    cp -f "$BIN_SOURCE_DIR/pve-sleep-detect.sh" "$PREFIX/pve-sleep-detect.sh"
+    cp -f "$0" "$PREFIX/pvesleep-install.sh"
+    [[ -f "$ROOT_DIR/README.md" ]] && cp -f "$ROOT_DIR/README.md" "$PREFIX/README.md"
+  fi
 
   chmod 0755 "$bin_dir"/*.sh "$PREFIX/pve-sleep-detect.sh" "$PREFIX/pvesleep-install.sh"
   chmod 0644 "$bin_dir"/*.service "$bin_dir"/*.rules 2>/dev/null || true
@@ -112,6 +132,7 @@ install_files() {
   install_symlink "$bin_dir/pve-lid-handler.service" "/etc/systemd/system/pve-lid-handler.service"
   install_symlink "$bin_dir/pve-battery-monitor.service" "/etc/systemd/system/pve-battery-monitor.service"
   install_symlink "$bin_dir/pve-network-failover.service" "/etc/systemd/system/pve-network-failover.service"
+
 
   if command -v systemctl >/dev/null 2>&1; then
     systemctl daemon-reload || true
@@ -169,6 +190,8 @@ uninstall_files() {
   log "Uninstall complete"
 }
 
+
+# Parse arguments
 while (($#)); do
   case "$1" in
     --prefix)
@@ -182,6 +205,37 @@ while (($#)); do
       ;;
     --no-detect)
       RUN_DETECT=0
+      shift
+      ;;
+    --install-missing)
+      INSTALL_MISSING=1; INTERACTIVE=0
+      shift
+      ;;
+    --no-install-missing)
+      NO_INSTALL_MISSING=1; INTERACTIVE=0
+      shift
+      ;;
+    --enable-wake)
+      ENABLE_WAKE=1; INTERACTIVE=0
+      shift
+      ;;
+    --no-enable-wake)
+      NO_ENABLE_WAKE=1; INTERACTIVE=0
+      shift
+      ;;
+    --configure-wifi)
+      CONFIGURE_WIFI=1; INTERACTIVE=0
+      if [[ -n "${2:-}" && -n "${3:-}" ]]; then
+        WIFI_SSID="$2"
+        WIFI_PASS="$3"
+        shift 3
+      else
+        err "--configure-wifi requires SSID and PASSWORD as arguments in non-interactive mode"
+        exit 1
+      fi
+      ;;
+    --no-configure-wifi)
+      NO_CONFIGURE_WIFI=1; INTERACTIVE=0
       shift
       ;;
     -h|--help)
@@ -200,7 +254,13 @@ while (($#)); do
   esac
 done
 
+# If any non-interactive flag is set, disable interactive
+if (( INSTALL_MISSING || ENABLE_WAKE || CONFIGURE_WIFI || NO_INSTALL_MISSING || NO_ENABLE_WAKE || NO_CONFIGURE_WIFI )); then
+  INTERACTIVE=0
+fi
+
 require_root
+
 
 if ((UNINSTALL == 1)); then
   uninstall_files
@@ -211,10 +271,37 @@ log "Installing or refreshing pve-sleep into $PREFIX"
 install_files
 log "Installer copied to $PREFIX/pvesleep-install.sh for future reuse"
 
+# Build detector args based on flags
+DETECT_ARGS=()
+if (( INTERACTIVE )); then
+  # Interactive: no flags, prompt for everything
+  :
+else
+  # Non-interactive: set detector args based on flags
+  if (( INSTALL_MISSING )); then DETECT_ARGS+=(--install-missing); fi
+  if (( ENABLE_WAKE )); then DETECT_ARGS+=(--enable-wake); fi
+  if (( CONFIGURE_WIFI )); then DETECT_ARGS+=(--configure-wifi); fi
+  if (( NO_INSTALL_MISSING )); then :; else DETECT_ARGS+=(--install-missing); fi
+  if (( NO_ENABLE_WAKE )); then :; else DETECT_ARGS+=(--enable-wake); fi
+  if (( NO_CONFIGURE_WIFI )); then :; else DETECT_ARGS+=(--configure-wifi); fi
+fi
+
 if ((RUN_DETECT == 1)); then
-  run_detection
+  if (( CONFIGURE_WIFI && ! INTERACTIVE )); then
+    # Pass SSID and PASSWORD to detector if non-interactive
+    "$PREFIX/pve-sleep-detect.sh" "${DETECT_ARGS[@]}" --output-dir "$PREFIX" "$WIFI_SSID" "$WIFI_PASS"
+  else
+    "$PREFIX/pve-sleep-detect.sh" "${DETECT_ARGS[@]}" --output-dir "$PREFIX"
+  fi
+  log "Detection complete: $PREFIX/sleep-system.txt and $PREFIX/sleep-system.json"
+else
+  log "Detection skipped (--no-detect)"
 fi
 
 log "Main detector: $PREFIX/pve-sleep-detect.sh"
 log "Safe sleep helper: $PREFIX/bin/safe-sleep.sh"
-log "Interactive setup: $PREFIX/pvesleep-install.sh --install-missing --enable-wake --configure-wifi"
+if (( INTERACTIVE )); then
+  log "Interactive setup: $PREFIX/pvesleep-install.sh (prompts for all features)"
+else
+  log "Non-interactive setup: $PREFIX/pvesleep-install.sh ${DETECT_ARGS[*]}"
+fi

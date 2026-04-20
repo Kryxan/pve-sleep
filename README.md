@@ -62,7 +62,7 @@ When package installation is requested, the toolkit also keeps:
 ### One-line GitHub install
 
 ```sh
-curl -L https://github.com/Kryxan/pve-sleep/archive/refs/heads/main.tar.gz | tar xz -C /tmp/ && /tmp/pve-sleep-main/pvesleep-install.sh
+curl -L https://github.com/Kryxan/pve-sleep/archive/refs/heads/main.tar.gz | tar xz -C /tmp/ && bash /tmp/pve-sleep-main/pvesleep-install.sh
 ```
 
 ### Local install from a checkout
@@ -86,8 +86,14 @@ This installs the toolkit into /opt/pve-sleep, stores the installer at /opt/pve-
 ### Reinstall or change install options later
 
 ```sh
+# Interactive (prompts for all features)
 /opt/pve-sleep/pvesleep-install.sh
-/opt/pve-sleep/pvesleep-install.sh --install-missing --enable-wake --configure-wifi
+
+# Non-interactive (all features enabled, no prompts)
+/opt/pve-sleep/pvesleep-install.sh --install-missing --enable-wake --configure-wifi "SSID" "PASSWORD"
+
+# Non-interactive (all features disabled)
+/opt/pve-sleep/pvesleep-install.sh --no-install-missing --no-enable-wake --no-configure-wifi
 ```
 
 ### Verify writable wake controls without permanent change
@@ -99,15 +105,24 @@ This installs the toolkit into /opt/pve-sleep, stores the installer at /opt/pve-
 ### Detect, prompt once for all safe package installs, enable wake, and configure Wi-Fi fallback
 
 ```sh
-/opt/pve-sleep/pve-sleep-detect.sh --install-missing --enable-wake --configure-wifi
+# Interactive (prompts for all features)
+/opt/pve-sleep/pve-sleep-detect.sh
+
+# Non-interactive (all features enabled, no prompts)
+/opt/pve-sleep/pve-sleep-detect.sh --install-missing --enable-wake --configure-wifi "SSID" "PASSWORD"
+
+# Non-interactive (all features disabled)
+/opt/pve-sleep/pve-sleep-detect.sh --no-install-missing --no-enable-wake --no-configure-wifi
 ```
 
-This interactive flow will:
+**Interactive mode** will:
 
-1. print the current support report
-2. show a single list of needed packages and ask once whether to install them, defaulting to yes
-3. re-run detection after installation and save before and after reports
-4. show the top 5 Wi-Fi networks by signal strength and let you pick one or skip
+1. Print the current support report
+2. Show a single list of needed packages and ask once whether to install them, defaulting to yes
+3. Re-run detection after installation and save before and after reports
+4. Show the top 5 Wi-Fi networks by signal strength and let you pick one or skip
+
+**Non-interactive mode** requires all arguments for features you want enabled. For Wi-Fi, you must provide SSID and PASSWORD as arguments to `--configure-wifi`.
 
 ### Uninstall
 
@@ -121,7 +136,7 @@ This disables and removes the linked pve-sleep services and udev rule. For safet
 
 ### safe-sleep
 
-The safe-sleep helper does not put the host to sleep. It only prepares guests so you can integrate it into a later suspend workflow.
+The safe-sleep helper does not put the host to sleep. It only prepares guests for future plan to integrate it into a later suspend workflow.
 
 ```sh
 /opt/pve-sleep/bin/safe-sleep.sh prepare
