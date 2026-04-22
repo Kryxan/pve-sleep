@@ -69,9 +69,11 @@ recommend_packages() {
   # --- WiFi tools (if wifi hardware detected) ---
   local has_wifi="no"
   local line
-  for line in "${NETWORK_LINES[@]:-}"; do
-    [[ "$line" == *"(wifi,"* ]] && has_wifi="yes"
-  done
+  if [[ -v NETWORK_LINES && ${#NETWORK_LINES[@]} -gt 0 ]]; then
+    for line in "${NETWORK_LINES[@]}"; do
+      [[ "$line" == *"(wifi,"* ]] && has_wifi="yes"
+    done
+  fi
 
   if [[ "$has_wifi" == "yes" ]]; then
     recommend_package iw "wireless capability inspection and WoWLAN"

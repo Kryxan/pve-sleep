@@ -11,7 +11,7 @@ set -u
 configure_packages_step() {
   local mode="$1"  # 0=skip, 1=prompt, 2=auto
 
-  (( ${#NEEDED_PACKAGE_NAMES[@]:-0} > 0 )) || { log "No additional packages needed."; return 0; }
+  [[ -v NEEDED_PACKAGE_NAMES && ${#NEEDED_PACKAGE_NAMES[@]} -gt 0 ]] || { log "No additional packages needed."; return 0; }
 
   case "$mode" in
     0) log "Package installation skipped (--no-install-missing)."; return 0 ;;

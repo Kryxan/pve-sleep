@@ -40,7 +40,7 @@ render_txt_report() {
   REPORT_LINES+=("Network adapters")
   REPORT_LINES+=("$(mark "$WOL_SUPPORTED_TOTAL") Wake-on-LAN: $WOL_SUPPORTED_TOTAL adapter(s)")
   REPORT_LINES+=("$(mark "$WOWLAN_SUPPORTED_TOTAL") Wake-on-Wireless-LAN: $WOWLAN_SUPPORTED_TOTAL adapter(s)")
-  if (( ${#NETWORK_LINES[@]:-0} > 0 )); then
+  if [[ -v NETWORK_LINES && ${#NETWORK_LINES[@]} -gt 0 ]]; then
     local nl
     for nl in "${NETWORK_LINES[@]}"; do
       REPORT_LINES+=("  $nl")
@@ -53,7 +53,7 @@ render_txt_report() {
   # --- USB ---
   REPORT_LINES+=("USB devices")
   REPORT_LINES+=("$(mark "$USB_WAKE_CAPABLE_TOTAL") USB wake-capable: $USB_WAKE_CAPABLE_TOTAL (enabled: $USB_WAKE_ENABLED_TOTAL)")
-  if (( ${#USB_LINES[@]:-0} > 0 )); then
+  if [[ -v USB_LINES && ${#USB_LINES[@]} -gt 0 ]]; then
     local ul
     for ul in "${USB_LINES[@]}"; do
       REPORT_LINES+=("  $ul")
@@ -80,13 +80,13 @@ render_txt_report() {
   REPORT_LINES+=("  Active consoleblank: $CONSOLE_BLANK_CURRENT")
   REPORT_LINES+=("  Sleep/wake timers: $RELEVANT_TIMER_SUMMARY")
   REPORT_LINES+=("  Inhibitors: $INHIBITOR_SUMMARY")
-  if (( ${#SERVICE_LINES[@]:-0} > 0 )); then
+  if [[ -v SERVICE_LINES && ${#SERVICE_LINES[@]} -gt 0 ]]; then
     local sl
     for sl in "${SERVICE_LINES[@]}"; do
       REPORT_LINES+=("  $sl")
     done
   fi
-  if (( ${#TIMER_LINES[@]:-0} > 0 )); then
+  if [[ -v TIMER_LINES && ${#TIMER_LINES[@]} -gt 0 ]]; then
     local tl
     for tl in "${TIMER_LINES[@]}"; do
       REPORT_LINES+=("  $tl")
@@ -96,7 +96,7 @@ render_txt_report() {
 
   # --- Packages ---
   REPORT_LINES+=("Needed packages")
-  if (( ${#NEEDED_PACKAGES[@]:-0} > 0 )); then
+  if [[ -v NEEDED_PACKAGES && ${#NEEDED_PACKAGES[@]} -gt 0 ]]; then
     local pkg
     for pkg in "${NEEDED_PACKAGES[@]}"; do
       REPORT_LINES+=("  - $pkg")
@@ -107,7 +107,7 @@ render_txt_report() {
   REPORT_LINES+=("")
 
   REPORT_LINES+=("Packages not found")
-  if (( ${#MISSING_PACKAGES[@]:-0} > 0 )); then
+  if [[ -v MISSING_PACKAGES && ${#MISSING_PACKAGES[@]} -gt 0 ]]; then
     local pkg
     for pkg in "${MISSING_PACKAGES[@]}"; do
       REPORT_LINES+=("  - $pkg")
@@ -119,7 +119,7 @@ render_txt_report() {
 
   # --- Limitations ---
   REPORT_LINES+=("Limitations")
-  if (( ${#LIMITATIONS[@]:-0} > 0 )); then
+  if [[ -v LIMITATIONS && ${#LIMITATIONS[@]} -gt 0 ]]; then
     local lim
     for lim in "${LIMITATIONS[@]}"; do
       REPORT_LINES+=("  $WARN_ICON $lim")
